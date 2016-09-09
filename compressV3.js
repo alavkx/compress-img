@@ -9,7 +9,6 @@ const Promise = require('bluebird');
 // Import the `imagemagick` library to compress our images
 // more speficially the convert function
 const convert = require('imagemagick').convert;
-Promise.promisifyAll(convert);
 
 // Import node's `file system` library to interact with files
 const fs = require('fs-extra');
@@ -30,26 +29,23 @@ const R = require('ramda');
 
 // Removes all images from the list that are not compressed
 // noted by signature on filename `-C`
-const compressed = R.filter(item => item.includes('-C'));
+const uncompressed = R.reject(item => item.includes('-C'));
 // Removes all images from the list that is not a jpg picture
 const isPicture = R.filter(item => item.toLowerCase().includes('jpg'));
+const sanitize = R.compose(uncompressed, isPicture);
 
-/*dir.files(cwd(), (err, files) => {
+dir.files(cwd(), (err, files) => {
 	if (err) throw err;
-	const pics = isPicture(files);
-	const compressedPics = compressed(pics);
-	const rawPics = R.not(compressed(pics));
+	const pics = sanitize(files);
 
 	R.forEach(
 		convert([files[i], '-resize', '1280x720', [files[i].replace(/(\.[\w\d_-]+)$/i, '-C$1')] ],
 		err => if (err) throw err;
 		)
-});*/
+});
 
-dir.files(cwd()
-	.then(
-		const pics = isPicture(files);
-		const compressedPics = compressed(pics);
-		const rawPics = R.not(compressed(pics));
-	).then(
-		R.forEach));
+// - sanitize incoming list to only include
+//   uncompressed images
+// - break list in to two lists,
+//   compressed and uncompressed
+// - compress images in unc
