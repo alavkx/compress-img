@@ -3,107 +3,91 @@
 // https://nodejs.org/docs/latest/api/process.html
 'use strict';
 
-
-// Import the `imagemagick` library to compress our images
-// more speficially the convert function
 const convert = require('imagemagick').convert;
-
-// Import node's `file system` library to interact with files
 const fs = require('fs-extra');
-
-// Current working directory
 const cwd = require('process').cwd;
-
-// Import node's `child_process` library to create
-// a windows cmd shell that will execute our commands
-const exec = require('child_process').exec;
+const dir = require('node-dir');
+const R = require('ramda');
 
 
-
-/*----------------------------------------*
- * Gather input after the file name (first argument) from the command
- * In this case the command you wish to enter may look like:
- *
- * compress nameofpictureyouwantcompressed      ! do not include file extension !
- *
- *   OR
- *
- * compress all
- *----------------------------------------*/
-
-
-
+// CHECK ARGUMENTS ////////////////////////////////////////////////////////////////////
 if (!process.argv[2]) { // testing for the presence of an argument
 	// Instruct user how to properly input command
-    console.log('Missing parameters\nFormat the command like > compress `filename`\n`filename` being the name of the file you wish to compress\n');
+    console.log('\n===============================USAGE===============================\n' + 
+    '`compress filename` :: Compress the file titled exactly as it is written\n' + 
+    '`compress all`      :: Compress every file in current directory\n' + 
+    '`compress all -r`   :: Compress every file in current directory AND all subdirectories' + 
+    '\n-------------------------------------------------------------------\n');
+    // Abort execution with error
+    process.exit(1);
 }
-else { // Argument(s) exist
-	console.log('\nWorking...\n');
-	// Save first argument for use
-	const arg = process.argv[2];
-
-	// Creating a new folder `Uncompressed-Pictures` (if none exists)
-	// to place the old file(s) in
-	exec('mkdir Uncompressed-Pictures');
 
 
+console.log('===============================WORKING===============================\n');
+// Save first argument for use
+const arg = process.argv[2];
 
-	/*------------------------------------------------* 
-	 * Executes the compilation script for all images
-	 * in the current directory. Checking if image is
-	 * already compressed. Moves original in to new folder
-	 *------------------------------------------------*/
 
-	if (arg == "all") { // Compress every image in the folder
+// CREATE FILTER FUNCTIONS ////////////////////////////////////////////////////////////
+// Removes all images from a list that are not compressed
+// noted by signature on filename `-C`,
+// or being located in folder `Uncompressed-Pictures`
+const uncompressed = R.reject(item => item.includes('-C') 
+			    || item.includes('Uncompressed-Pictures'));
+// Removes all images from a list that is not a jpg picture
+const isPicture = R.filter(item => item.toLowerCase().includes('jpg'));
+const sanitize = R.compose(uncompressed, isPicture);
 
-		// Make a list of all the files in the directory
-		// Will allow iteration through images
-		fs.readdir( cwd()/* <- Current working directory */, ( err, files ) => {
-	        if( err ) throw err;
-	        
-	    	// Step through the list of files
-	    	const len = files.length;
-	        for (let i=0; i < len; i++) {
 
-	        	// -C in the filename indicates:
-        		//   already compressed, skip instructions below
-        		//   and check next file
-        		if (files[i].includes("-C")) { 
-        			console.log(files[i] + " already compressed\n");
-        			continue; // breaks out of current loop iteration
-        		}
+// FILTER -> COMPRESS -> MOVE PICTURES ////////////////////////////////////////////////
+const compressMove = files => {
+	const pics = sanitize(files);
 
-	        	// Removes any existing spaces from the filename	        	
-	        	if (files[i].includes(" ")) {
-	        		let filename_nospace = files[i].replace(/\s+/g, '');
-	        		// Renames the file and matching string in `files`
-        			fs.renameSync(files[i], filename_nospace);
-        			files[i] = filename_nospace;	        
-	        	}
+	R.forEach(name => {
+		// What we're here for
+		convert([name, '-resize', '1280x720', name.replace(/(\.[\w\d_-]+)$/i, '-C$1')],
+		err => {
+			if (err) throw err;
+			// Inserting folder in to filepath
+			let n = name.lastIndexOf('\\');
+			let uncompressed_filepath = name.substring(0,n) +'\\Uncompressed-Pictures';
 
-	        	if (files[i].toLowerCase().includes("jpg")) {
-	        		// Make the conversion to the currently selected `files[i]`
-	        		// out of list `files`
-	        		// `replace(/(\.[\w\d_-]+)$/i, '-C$1')` means: 
-	        		// Place -C at the end of filename before the file extension 
-	        		convert([files[i], '-resize', '1280x720', [files[i].replace(/(\.[\w\d_-]+)$/i, '-C$1')] ],
-					(err, stdout) => { 
-						if (err) throw err; 
-						console.log(files[i] + ' compressed successfully');
+			// Create folder to store original pictures
+			fs.mkdirs(uncompressed_filepath, err => {
+				if (err) throw err;
+				let uncompressed_filename = uncompressed_filepath + '\\' + name.substring(n);
 
-						// Move unaltered file to `Uncompressed-Pictures` folder
-						fs.move(files[i], cwd() +  '/Uncompressed-Pictures/' + files[i], (err) => {
-	        				if (err) throw err;
-	        				console.log(files[i] +  'moved to ' + 'Uncompressed-Pictures');
-	        			});
-					});
-	 
+				// Move uncompressed file to new folder
+				fs.move(name, uncompressed_filename, err => {
+					if (err) throw err;
+					console.log(name.substring(n) +  ' moved to ' + 'Uncompressed-Pictures\n');
+	        	});
+	        });
+	    });
+	}, pics);
+}
 
-	        	}
-	        }
-    	});
-    } 
-
+// DETERMINE MODE ///////////////////////////////////////////////////////////////////
+if (arg === 'all') {
+	// RECURSIVE
+	// The big shabam
+	if (process.argv[3] === '-r') {
+		// Read files recursively and create an array of `filepath/filename`
+		dir.files(cwd(), (err, files) => {
+			if (err) throw err;
+			compressMove(files);
+		});
+	}
+	// NON-RECURSIVE
+	// Compress all files in current directory
+	else {
+		fs.readdir(cwd(), (err, files) => {
+			if(err) throw err;
+			let filepath_list = R.map(x => cwd() + '\\' + x, files);
+			compressMove(filepath_list);			
+		});
+	}
+} else { // SINGLE ITERATION
 
 	/*------------------------------------------------* 
 	 * Executes the compilation script for one image...
@@ -111,23 +95,26 @@ else { // Argument(s) exist
 	 * directly in to the command.
 	 *------------------------------------------------*/
 
-    else { // Compress specified file
-    	const filename = process.argv[2] + '.jpg';
+	const filename = process.argv[2] + '.jpg';
+	console.log('Compressing ' + filename) + '...';
 
-		// Make the conversion to the currently selected `files[i]`
-		// out of list `files`
-		// `replace(/(\.[\w\d_-]+)$/i, '-C$1')` means: 
-		// Place -C at the end of filename before the file extension 
-		convert([filename, '-resize', '1280x720', [filename.replace(/(\.[\w\d_-]+)$/i, '-C$1')] ],
-		(err, stdout) => { 
-			if (err) throw err; 
-			console.log(filename + ' compressed successfully');
+	// Make the conversion to the currently selected `files[i]`
+	// out of list `files`
+	// `replace(/(\.[\w\d_-]+)$/i, '-C$1')` means: 
+	// Place -C at the end of filename before the file extension 
+	convert([filename, '-resize', '1280x720', filename.replace(/(\.[\w\d_-]+)$/i, '-C$1')],
+	err => { 
+		if (err) throw err; 
+		console.log(filename + ' compressed successfully');
 
-			// Move unaltered file to `Uncompressed-Pictures` folder
-			fs.move(filename, cwd() +  '/Uncompressed-Pictures/' + filename, (err) => {
+		// Create folder to store original pictures
+		fs.mkdirs(cwd() + '/Uncompressed-Pictures', err => {
+			if (err) throw err;
+			// Move uncompressed file to new folder
+			fs.move(filename, cwd() + '\\Uncompressed-Pictures\\' + filename, err => {
 				if (err) throw err;
-				console.log(filename +  'moved to ' + 'Uncompressed-Pictures');
-			});
-		});
-	}
+				console.log(filename +  ' moved to ' + 'Uncompressed-Pictures\n');
+        	});
+        });
+	});
 }
