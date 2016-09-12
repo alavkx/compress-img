@@ -12,3 +12,13 @@ Use node image magick library to recursively compress every image in a file dire
 - Enter the full path to the location you saved `Scripts` folder with `;` at the end 
 - ! careful not to erase any previous entries ! 
 - Ex: `C:\\Scripts\compress-img;`
+- Apply, Save
+- Finished!
+
+### Usage
+`compress filename` :: Compress the file titled exactly as it is written
+
+`compress all`      :: Compress every file in current directory
+
+`compress all -r`   :: Compress every file in current directory AND all subdirectories
+
